@@ -35,7 +35,7 @@ jobs:
     # 推荐位置仍是 Settings -> Secrets and variables -> Actions -> Repository variables。
     environment: STOCK_LIST
     # 添加超时限制，防止任务卡死
-    timeout-minutes: ${{ fromJSON(vars.ANALYSIS_TIMEOUT_MINUTES || '30') }}
+    timeout-minutes: ${{ fromJSON(vars.ANALYSIS_TIMEOUT_MINUTES || (vars.TDX_SCREENING_ENABLED == 'true' && '180') || '30') }}
     
     steps:
       - name: 随机延迟（避免固定时间访问）
@@ -59,6 +59,19 @@ jobs:
       - name: 创建必要目录
         run: |
           mkdir -p data logs reports
+
+      - name: 通达信公式每日选股（沪深 A 股，排除 ST）
+        id: tdx
+        if: vars.TDX_SCREENING_ENABLED == 'true'
+        env:
+          TDX_SCREENING_WORKERS: ${{ vars.TDX_SCREENING_WORKERS || '4' }}
+          TDX_SCREENING_LOOKBACK: ${{ vars.TDX_SCREENING_LOOKBACK || '250' }}
+        run: |
+          python scripts/screen_tdx.py \
+            --output reports/tdx-screening.json \
+            --github-output "$GITHUB_OUTPUT" \
+            --workers "$TDX_SCREENING_WORKERS" \
+            --lookback "$TDX_SCREENING_LOOKBACK"
       
       - name: 执行股票分析
         env:
@@ -414,6 +427,9 @@ jobs:
           # ==========================================
           # 避免直接写入 STOCK_LIST，保留同名 Environment variables 的 runner 环境值。
           STOCK_LIST_CONFIG: ${{ vars.STOCK_LIST || secrets.STOCK_LIST }}
+          TDX_SCREENING_ENABLED: ${{ vars.TDX_SCREENING_ENABLED || 'false' }}
+          TDX_SCREENING_HAS_MATCHES: ${{ steps.tdx.outputs.has_matches }}
+          TDX_SCREENING_STOCK_LIST: ${{ steps.tdx.outputs.stock_list }}
           MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
           MARKET_REVIEW_COLOR_SCHEME: ${{ vars.MARKET_REVIEW_COLOR_SCHEME || secrets.MARKET_REVIEW_COLOR_SCHEME || 'green_up' }}
           
@@ -445,7 +461,13 @@ jobs:
           # 1. Repository/Environment secrets 或 Repository variables（STOCK_LIST_CONFIG）
           # 2. 同名 Environment variables 注入的 runner 环境变量（STOCK_LIST）
           # 3. 最小默认值
-          if [ -n "${STOCK_LIST_CONFIG:-}" ]; then
+          if [ "$TDX_SCREENING_ENABLED" = "true" ]; then
+            if [ "$TDX_SCREENING_HAS_MATCHES" != "true" ] || [ -z "$TDX_SCREENING_STOCK_LIST" ]; then
+              echo "通达信选股无匹配或非交易日：跳过分析，详见 tdx-screening.json"
+              exit 0
+            fi
+            export STOCK_LIST="$TDX_SCREENING_STOCK_LIST"
+          elif [ -n "${STOCK_LIST_CONFIG:-}" ]; then
             export STOCK_LIST="$STOCK_LIST_CONFIG"
           elif [ -z "${STOCK_LIST:-}" ]; then
             export STOCK_LIST="600519"
