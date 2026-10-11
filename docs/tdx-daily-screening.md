@@ -52,8 +52,16 @@ Secrets 配置 `LLM_OPENAI_API_KEY` 和 `FEISHU_WEBHOOK_URL`。飞书机器人�
 
 ## 本地验证与回滚
 
+### 当前阶段：小样本可行性验证，不配置推送
+
+在 Actions → 每日股票分析 → Run workflow 勾选 `verify_only`，样本数 `screening_sample_size` 默认 20（范围 1–100）。`verify_as_of` 留空时须在当天收盘后（北京时间 15:30 后）启动；盘前、周末或休市时可填近期已收盘交易日，例如 `2026-10-09`。历史验证只用目标日及之前的 K 线，当前接口仅提供最近一段历史，过早的目标日可能不足 90 根。股票全集仍来自当前快照，不用于历史全市场回测。
+
+这个模式无需开启 `TDX_SCREENING_ENABLED`，从沪深非 ST 股票代码中均匀抽取样本，不把样本名单写入正式分析。保留每只已计算样本的 J、DIF、AVGHIGH、AVGLOW 和选中状态，记录行情获取耗时、覆盖数和失败原因。样本扫描完成后，用现有 `GeminiAnalyzer.generate_text_with_metadata` 对最多三个实际样本生成一份短报告，记录请求模型与实际模型。空模型输出或切换到另一模型会验证失败；费用及重试沿用项目现有模型路由。该检查验证生成通路，不代表已完成完整个股分析或正确性评估。
+
+无需配置企业微信或飞书；验证分支不调用通知服务。保留模型 Variables 和 `LLM_OPENAI_API_KEY` Secret 即可。下载 `analysis-reports-*`，检查 `tdx-screening.json`（行情与公式）和 `tdx-model-check.json`（模型通路及短报告）。小样本成功后再扩大样本，并用同日期的通达信结果对照。全市场停牌/行情缺失导致任务中断的严格策略尚需在正式启用前处理。
+
 ```bash
-python -m unittest tests.test_tdx_formula tests.test_tdx_screening_job -v
+python -m unittest tests.test_tdx_formula tests.test_tdx_screening_job tests.test_tdx_llm_verification -v
 python scripts/screen_tdx.py --output reports/tdx-screening.json
 ```
 

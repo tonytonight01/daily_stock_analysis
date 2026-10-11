@@ -4,12 +4,13 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
-from datetime import datetime
+from datetime import date, datetime
 import json
 import logging
 from pathlib import Path
 import re
 import sys
+import time
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -22,17 +23,19 @@ def eligible(code: str, name: str) -> bool:
     return bool(re.fullmatch(r"(?:60\d{4}|68\d{4}|00\d{4}|30\d{4})", code)) and "ST" not in name.upper()
 
 
-def screen_one(code: str, name: str, lookback: int, session_date) -> dict:
+def screen_one(code: str, name: str, lookback: int, session_date, historical: bool = False) -> dict:
     from src.services.screening.daily import fetch_daily_history
 
     # Pin one source: Tencent qfq prices and volume in lots. Do not mix
     # unadjusted fallback sources or share-unit volume into this formula.
     frame = fetch_daily_history(code, lookback_days=lookback, source="tencent", retries=1)
+    frame = frame.sort_values("date")
+    if historical:
+        frame = frame[frame["date"].astype(str).str[:10] <= session_date.isoformat()]
     if len(frame) < 90:
         raise UndefinedFormulaError("history shorter than 90 daily bars")
-    if frame.attrs.get("daily_stale"):
+    if frame.attrs.get("daily_stale") and not historical:
         raise ValueError("stale daily data")
-    frame = frame.sort_values("date")
     dates = frame["date"].astype(str).str[:10]
     if dates.duplicated().any() or dates.iloc[-1] != session_date.isoformat():
         raise ValueError("duplicate dates or missing current session close")
@@ -48,9 +51,17 @@ def main() -> int:
     parser.add_argument("--github-output", type=Path)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--lookback", type=int, default=250)
+    parser.add_argument("--sample-size", type=int, default=0,
+                        help="Feasibility sample of 1..100 stocks; 0 scans the full universe")
+    parser.add_argument("--as-of", type=date.fromisoformat,
+                        help="Historical completed trading date for verification (YYYY-MM-DD)")
     args = parser.parse_args()
     if not 1 <= args.workers <= 8 or not 90 <= args.lookback <= 1000:
         parser.error("workers must be 1..8; lookback must be 90..1000")
+    if not 0 <= args.sample_size <= 100:
+        parser.error("sample-size must be 0..100")
+    if args.as_of and args.sample_size == 0:
+        parser.error("as-of is only supported with an explicit verification sample")
 
     # Clear old outputs before any network work. A failed run cannot reuse
     # yesterday's picks, and an empty result never falls back to default stocks.
@@ -64,15 +75,21 @@ def main() -> int:
     from src.services.screening.snapshot import fetch_snapshot_with_fallback
 
     now = datetime.now(ZoneInfo("Asia/Shanghai"))
-    report = {"date": now.date().isoformat(), "period": "daily", "adjust": "qfq",
+    session_date = args.as_of or now.date()
+    if session_date > now.date():
+        parser.error("as-of cannot be in the future")
+    started = time.monotonic()
+    report = {"date": session_date.isoformat(), "period": "daily", "adjust": "qfq",
               "universe": "Shanghai/Shenzhen A shares excluding ST", "source": "tencent",
-              "lookback": args.lookback, "matches": [], "errors": [], "undefined": []}
-    if not is_market_open("cn", now.date()):
+              "lookback": args.lookback, "sample_size": args.sample_size,
+              "verification_only": bool(args.sample_size),
+              "matches": [], "errors": [], "undefined": []}
+    if not is_market_open("cn", session_date):
         report["status"] = "non_trading_day"
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print("Non-trading day: skip screening and stock analysis")
         return 0
-    if (now.hour, now.minute) < (15, 30):
+    if session_date == now.date() and (now.hour, now.minute) < (15, 30):
         raise RuntimeError("daily screening requires completed close (after 15:30 Asia/Shanghai)")
 
     snapshot = fetch_snapshot_with_fallback(["sina", "efinance", "akshare_em"],
@@ -85,14 +102,26 @@ def main() -> int:
     if not universe:
         raise RuntimeError("no eligible stocks in live snapshot")
     report["universe_count"] = len(universe)
+    if args.sample_size:
+        # Evenly spaced by code, to exercise several exchanges/boards without
+        # advertising the validation sample as a full-market selection result.
+        items = sorted(universe.items())
+        count = min(args.sample_size, len(items))
+        indices = [i * (len(items) - 1) // max(count - 1, 1) for i in range(count)]
+        universe = dict(items[i] for i in indices)
+        report["sample_evaluations"] = []
+    report["scanned_count"] = len(universe)
+    report["universe_fetch_seconds"] = round(time.monotonic() - started, 3)
     processed = 0
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(screen_one, code, name, args.lookback, now.date()): code
+        futures = {pool.submit(screen_one, code, name, args.lookback, session_date, bool(args.as_of)): code
                    for code, name in sorted(universe.items())}
         for future in as_completed(futures):
             code = futures[future]
             try:
                 row = future.result()
+                if args.sample_size:
+                    report["sample_evaluations"].append(row)
                 if row["selected"]:
                     report["matches"].append(row)
             except UndefinedFormulaError as exc:
@@ -107,13 +136,16 @@ def main() -> int:
     report["undefined"].sort(key=lambda row: row["code"])
     report["evaluated_count"] = len(universe) - len(report["errors"]) - len(report["undefined"])
     report["status"] = "partial" if report["errors"] else "complete"
+    report["elapsed_seconds"] = round(time.monotonic() - started, 3)
+    if args.sample_size:
+        report["sample_evaluations"].sort(key=lambda row: row["code"])
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Coverage {report['evaluated_count']}/{len(universe)}; matches={len(report['matches'])}")
     if report["errors"]:
         # A partial scan is an error, not a full-market all-clear or match list.
         print("Incomplete scan: inspect screening report; stock analysis suppressed", file=sys.stderr)
         return 1
-    if args.github_output:
+    if args.github_output and not args.sample_size:
         codes = ",".join(row["code"] for row in report["matches"])
         with args.github_output.open("a", encoding="utf-8") as output:
             output.write(f"has_matches={'true' if codes else 'false'}\nstock_list={codes}\n")

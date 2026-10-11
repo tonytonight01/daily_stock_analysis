@@ -24,7 +24,7 @@ class Snapshot:
 
 
 class ScreeningJobTest(unittest.TestCase):
-    def run_job(self, directory, *, worker, trading=True, snapshot=None):
+    def run_job(self, directory, *, worker, trading=True, snapshot=None, extra_args=()):
         report = Path(directory) / "report.json"
         output = Path(directory) / "github-output"
         report.write_text('{"matches":[{"code":"999999"}]}', encoding="utf-8")
@@ -33,7 +33,7 @@ class ScreeningJobTest(unittest.TestCase):
             "src.services.screening.snapshot": SimpleNamespace(
                 fetch_snapshot_with_fallback=lambda *args, **kwargs: snapshot or Snapshot()),
         }
-        argv = ["screen_tdx.py", "--output", str(report), "--github-output", str(output)]
+        argv = ["screen_tdx.py", "--output", str(report), "--github-output", str(output), *extra_args]
         with patch.dict("sys.modules", modules), patch("sys.argv", argv), \
                 patch.object(screen_tdx, "datetime", FixedDatetime), \
                 patch.object(screen_tdx, "screen_one", side_effect=worker) as mocked:
@@ -87,6 +87,47 @@ class ScreeningJobTest(unittest.TestCase):
         self.assertEqual(report["status"], "non_trading_day")
         self.assertEqual(output["stock_list"], "")
         mocked.assert_not_called()
+
+    def test_sample_never_exports_production_stock_list(self):
+        with tempfile.TemporaryDirectory() as directory:
+            status, report, output, mocked = self.run_job(
+                directory, worker=lambda code, *args: {"code": code, "selected": True},
+                extra_args=["--sample-size", "1"])
+        self.assertEqual(status, 0)
+        self.assertEqual(mocked.call_count, 1)
+        self.assertEqual(report["universe_count"], 2)
+        self.assertEqual(report["scanned_count"], 1)
+        self.assertTrue(report["verification_only"])
+        self.assertEqual(len(report["sample_evaluations"]), 1)
+        self.assertEqual(output["stock_list"], "")
+
+    def test_historical_date_is_passed_to_fetcher(self):
+        with tempfile.TemporaryDirectory() as directory:
+            status, report, _, mocked = self.run_job(
+                directory, worker=lambda code, *args: {"code": code, "selected": False},
+                extra_args=["--sample-size", "1", "--as-of", "2026-10-09"])
+        self.assertEqual(status, 0)
+        self.assertEqual(report["date"], "2026-10-09")
+        self.assertEqual(mocked.call_args.args[-2].isoformat(), "2026-10-09")
+        self.assertTrue(mocked.call_args.args[-1])
+
+    def test_historical_price_filter_prevents_future_bar_use(self):
+        import pandas as pd
+        from datetime import date
+        frame = pd.DataFrame({
+            "date": [date(2026, 1, 1).fromordinal(date(2026, 1, 1).toordinal() + i).isoformat()
+                     for i in range(95)],
+            "close": [5.] * 94 + [9.], "high": [10.] * 95, "low": [1.] * 95, "volume": [100.] * 95,
+        })
+        frame.attrs["daily_stale"] = True
+        module = SimpleNamespace(fetch_daily_history=lambda *args, **kwargs: frame)
+        target = date.fromisoformat(frame.iloc[-2]["date"])
+        with patch.dict("sys.modules", {"src.services.screening.daily": module}):
+            result = screen_tdx.screen_one("600519", "test", 250, target, True)
+            self.assertEqual(result["date"], target.isoformat())
+            self.assertEqual(result["dif"], 0)
+            with self.assertRaises(ValueError):
+                screen_tdx.screen_one("600519", "test", 250, target, False)
 
 
 if __name__ == "__main__":

@@ -22,6 +22,21 @@ on:
         required: false
         default: false
         type: boolean
+      verify_only:
+        description: '可行性验证：小样本选股 + 一份模型短报告，不发送推送'
+        required: false
+        default: false
+        type: boolean
+      screening_sample_size:
+        description: '验证样本数（1-100，仅 verify_only 生效）'
+        required: false
+        default: '20'
+        type: string
+      verify_as_of:
+        description: '验证收盘日期 YYYY-MM-DD；留空使用今天（15:30后）'
+        required: false
+        default: ''
+        type: string
 
 # 并发控制：同一时间只运行一个分析任务
 concurrency:
@@ -62,16 +77,30 @@ jobs:
 
       - name: 通达信公式每日选股（沪深 A 股，排除 ST）
         id: tdx
-        if: vars.TDX_SCREENING_ENABLED == 'true'
+        if: vars.TDX_SCREENING_ENABLED == 'true' || github.event.inputs.verify_only == 'true'
         env:
           TDX_SCREENING_WORKERS: ${{ vars.TDX_SCREENING_WORKERS || '4' }}
           TDX_SCREENING_LOOKBACK: ${{ vars.TDX_SCREENING_LOOKBACK || '250' }}
+          VERIFY_ONLY: ${{ github.event.inputs.verify_only || 'false' }}
+          SAMPLE_SIZE: ${{ github.event.inputs.screening_sample_size || '20' }}
+          VERIFY_AS_OF: ${{ github.event.inputs.verify_as_of || '' }}
         run: |
+          EXTRA_ARGS=()
+          if [ "$VERIFY_ONLY" = 'true' ]; then
+            if ! [[ "$SAMPLE_SIZE" =~ ^[1-9][0-9]*$ ]] || [ "$SAMPLE_SIZE" -gt 100 ]; then
+              echo '验证样本数必须为 1-100'
+              exit 1
+            fi
+            EXTRA_ARGS+=(--sample-size "$SAMPLE_SIZE")
+            if [ -n "$VERIFY_AS_OF" ]; then
+              EXTRA_ARGS+=(--as-of "$VERIFY_AS_OF")
+            fi
+          fi
           python scripts/screen_tdx.py \
             --output reports/tdx-screening.json \
             --github-output "$GITHUB_OUTPUT" \
             --workers "$TDX_SCREENING_WORKERS" \
-            --lookback "$TDX_SCREENING_LOOKBACK"
+            --lookback "$TDX_SCREENING_LOOKBACK" "${EXTRA_ARGS[@]}"
       
       - name: 执行股票分析
         env:
@@ -430,6 +459,7 @@ jobs:
           TDX_SCREENING_ENABLED: ${{ vars.TDX_SCREENING_ENABLED || 'false' }}
           TDX_SCREENING_HAS_MATCHES: ${{ steps.tdx.outputs.has_matches }}
           TDX_SCREENING_STOCK_LIST: ${{ steps.tdx.outputs.stock_list }}
+          VERIFY_ONLY: ${{ github.event.inputs.verify_only || 'false' }}
           MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
           MARKET_REVIEW_COLOR_SCHEME: ${{ vars.MARKET_REVIEW_COLOR_SCHEME || secrets.MARKET_REVIEW_COLOR_SCHEME || 'green_up' }}
           
@@ -457,6 +487,12 @@ jobs:
           REALTIME_SOURCE_PRIORITY: ${{ vars.REALTIME_SOURCE_PRIORITY || 'tencent,akshare_sina,efinance,akshare_em' }}
           
         run: |
+          if [ "$VERIFY_ONLY" = 'true' ]; then
+            python scripts/tdx_model_check.py \
+              --screening-report reports/tdx-screening.json \
+              --output reports/tdx-model-check.json
+            exit 0
+          fi
           # 解析自选股配置：
           # 1. Repository/Environment secrets 或 Repository variables（STOCK_LIST_CONFIG）
           # 2. 同名 Environment variables 注入的 runner 环境变量（STOCK_LIST）
