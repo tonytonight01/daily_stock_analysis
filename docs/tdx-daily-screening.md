@@ -54,6 +54,26 @@ Secrets 配置 `LLM_DEEPSEEK_API_KEY`，值为 DeepSeek 平台创建的 API Key�
 
 ## 本地验证与回滚
 
+### 截图中的 Web 工作台
+
+项目已包含产品预览中的 Web 前端，无需另写界面。GitHub Actions 负责运行任务，不托管持续运行的 Web 服务；网页需要在本地电脑或云服务器单独启动。
+
+在已安装 Python 3.11+、Node.js 20.19+ 和 npm 10+ 的部署机器上，下载本 Fork，安装 `requirements.txt` 中的依赖，然后构建前端：
+
+```bash
+cd apps/dsa-web
+npm ci --registry=https://registry.npmjs.org --replace-registry-host=always
+npm run build
+cd ../..
+python main.py --webui-only --host 127.0.0.1 --port 8000
+```
+
+该构建将页面写入 `static/`，由同一个 Python 服务提供页面与 API。本机浏览器打开 `http://127.0.0.1:8000`，在主题菜单选择浅色，首页可查看历史报告、情绪评分、策略点位和资讯；具体外观随当前前端版本有所变化。启动参数可按实际部署修改，不把当前云环境的 loopback 地址当作用户电脑的访问地址。公网部署请使用 [云服务器 Web 界面访问指南](deploy-webui-cloud.md) 配置登录认证和访问入口。
+
+部署机器的 `.env` 需要填写上表六项 DeepSeek 配置，以及 `LLM_DEEPSEEK_API_KEY`；GitHub Secrets 不会自动同步到该机器。密钥只填写在部署机器的配置或 Web 系统设置中，不提交仓库。不要为此启用微信或飞书推送。
+
+历史列表读取该 Web 服务的数据库。Actions ZIP 里的 `tdx-model-check.json` 是通路验证短报告，不是完整个股分析记录，不会自动出现在历史列表中。首次启动历史列表为空是正常情况；在首页运行个股分析后可查看真实结果。当前通达信公式运行在 Actions 选股脚本中，启用 Web 服务本身不会将这条公式接入网页选股页或自动同步每日名单；正式部署时需要明确数据同步与调度方式，不能把产品预览中的样例数据作为真实报告。
+
 ### 当前阶段：小样本可行性验证，不配置推送
 
 在 Actions → 每日股票分析 → Run workflow 勾选 `verify_only`，样本数 `screening_sample_size` 默认 20（范围 1–100）。`verify_as_of` 留空时须在当天收盘后（北京时间 15:30 后）启动；盘前、周末或休市时可填近期已收盘交易日，例如 `2026-10-09`。历史验证只用目标日及之前的 K 线，当前接口仅提供最近一段历史，过早的目标日可能不足 90 根。股票全集仍来自当前快照，不用于历史全市场回测。

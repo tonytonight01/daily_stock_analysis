@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [文档] 补充通达信部署方案的原生 Web 工作台构建与启动步骤，明确独立 DeepSeek 配置、访问地址以及 Actions 验证产物与网页历史数据库的区别。
+
 - [文档] 通达信选股部署说明改用 DeepSeek Flash，明确渠道与模型 Variables、独立 API Key 以及从 OpenAI 切换的步骤；验证阶段无需推送配置。
 
 - [改进] 通达信选股增加手动小样本可行性验证与历史收盘日期，保存逐股指标和耗时，通过既有模型路由生成短报告并核验实际模型；验证模式不导出正式名单或发送推送。
