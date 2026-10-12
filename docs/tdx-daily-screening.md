@@ -36,15 +36,17 @@ EMA 用第一根收盘价初始化，K/D 用第一个完整 9 日窗口的 RSV �
 | `TDX_SCREENING_WORKERS` | `4` | 选股日线并发，允许 1–8 |
 | `TDX_SCREENING_LOOKBACK` | `250` | 历史日线根数，允许 90–1000 |
 | `ANALYSIS_TIMEOUT_MINUTES` | `180` | 全市场扫描较慢，按实际耗时调整 |
-| `LLM_CHANNELS` | `openai` | 模型渠道 |
-| `LLM_OPENAI_PROTOCOL` | `openai` | OpenAI 协议 |
-| `LLM_OPENAI_API_SURFACE` | `responses` | Responses API |
-| `LLM_OPENAI_BASE_URL` | `https://api.openai.com/v1` | 官方接口地址 |
-| `LLM_OPENAI_MODELS` | `gpt-6.1-sol` | 所选模型；需账号有对应权限 |
-| `LITELLM_MODEL` | `openai/gpt-6.1-sol` | 分析使用的模型 |
+| `LLM_CHANNELS` | `deepseek` | 仅启用 DeepSeek 渠道 |
+| `LLM_DEEPSEEK_PROTOCOL` | `deepseek` | DeepSeek 协议 |
+| `LLM_DEEPSEEK_API_SURFACE` | `chat_completions` | Chat Completions API |
+| `LLM_DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | 官方接口地址 |
+| `LLM_DEEPSEEK_MODELS` | `deepseek-flash` | 官方当前 Flash 模型名称 |
+| `LITELLM_MODEL` | `deepseek/deepseek-flash` | 分析与验证使用的模型 |
 | `MARKET_REVIEW_ENABLED` | `false` | 本方案只分析公式命中的个股 |
 
-Secrets 配置 `LLM_OPENAI_API_KEY` 和 `FEISHU_WEBHOOK_URL`。飞书机器人如果开启关键词或签名验证，还需填写工作流已有的 `FEISHU_WEBHOOK_KEYWORD` 或 `FEISHU_WEBHOOK_SECRET`。不要把密钥提交进仓库。该项目使用 API 调用凭据，不使用聊天会话作为模型服务。
+Secrets 配置 `LLM_DEEPSEEK_API_KEY`，值为 DeepSeek 平台创建的 API Key，不能复用 OpenAI Key。当前可行性验证不需要推送配置。正式需要飞书推送时再配置 `FEISHU_WEBHOOK_URL`。飞书机器人如果开启关键词或签名验证，还需填写工作流已有的 `FEISHU_WEBHOOK_KEYWORD` 或 `FEISHU_WEBHOOK_SECRET`。不要把密钥提交进仓库。该项目使用 API 调用凭据，不使用聊天会话作为模型服务。
+
+从 GPT 切换时必须修改已有的 `LLM_CHANNELS` 和 `LITELLM_MODEL`，再添加四项 `LLM_DEEPSEEK_*` Variables；只新增 DeepSeek Key 不会切换模型。原来的 `LLM_OPENAI_*` 配置可保留，单渠道 `deepseek` 不会加载该渠道。若曾配置 `LLM_DEEPSEEK_ENABLED=false`，须改为 `true` 或删除该项。最新模型名与地址见 [DeepSeek 官方文档](https://api-docs.deepseek.com/en/)。
 
 启用 Actions 后选择「每日股票分析」→ Run workflow → mode 选择 stocks-only。选股只在 A 股交易日北京时间 15:30 后运行；`force_run` 不绕过选股的收盘时间和交易日检查。默认周一至周五北京时间 18:00 触发，开始时间可能受 GitHub 调度延迟影响。无匹配或非交易日时跳过后续分析，不回退默认股票，也不发送个股报告。选中股票全部分析，不暗中截断名单；数量多时模型费用和运行时间随之增加。
 
@@ -58,7 +60,7 @@ Secrets 配置 `LLM_OPENAI_API_KEY` 和 `FEISHU_WEBHOOK_URL`。飞书机器人�
 
 这个模式无需开启 `TDX_SCREENING_ENABLED`，从沪深非 ST 股票代码中均匀抽取样本，不把样本名单写入正式分析。保留每只已计算样本的 J、DIF、AVGHIGH、AVGLOW 和选中状态，记录行情获取耗时、覆盖数和失败原因。样本扫描完成后，用现有 `GeminiAnalyzer.generate_text_with_metadata` 对最多三个实际样本生成一份短报告，记录请求模型与实际模型。空模型输出或切换到另一模型会验证失败；费用及重试沿用项目现有模型路由。该检查验证生成通路，不代表已完成完整个股分析或正确性评估。
 
-无需配置企业微信或飞书；验证分支不调用通知服务。保留模型 Variables 和 `LLM_OPENAI_API_KEY` Secret 即可。下载 `analysis-reports-*`，检查 `tdx-screening.json`（行情与公式）和 `tdx-model-check.json`（模型通路及短报告）。小样本成功后再扩大样本，并用同日期的通达信结果对照。全市场停牌/行情缺失导致任务中断的严格策略尚需在正式启用前处理。
+无需配置企业微信或飞书；验证分支不调用通知服务。保留模型 Variables 和 `LLM_DEEPSEEK_API_KEY` Secret 即可。下载 `analysis-reports-*`，检查 `tdx-screening.json`（行情与公式）和 `tdx-model-check.json`（模型通路及短报告）。小样本成功后再扩大样本，并用同日期的通达信结果对照。全市场停牌/行情缺失导致任务中断的严格策略尚需在正式启用前处理。
 
 ```bash
 python -m unittest tests.test_tdx_formula tests.test_tdx_screening_job tests.test_tdx_llm_verification -v

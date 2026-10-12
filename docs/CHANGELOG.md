@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [文档] 通达信选股部署说明改用 DeepSeek Flash，明确渠道与模型 Variables、独立 API Key 以及从 OpenAI 切换的步骤；验证阶段无需推送配置。
+
 - [改进] 通达信选股增加手动小样本可行性验证与历史收盘日期，保存逐股指标和耗时，通过既有模型路由生成短报告并核验实际模型；验证模式不导出正式名单或发送推送。
 
 - [新功能] 每日分析工作流可选先运行日线前复权通达信 J/DIF/成交量公式，扫描沪深非 ST A 股后分析当日名单，保留嵌套极值语义；无匹配跳过，取数失败阻止不完整名单分析，并保存选股诊断。
