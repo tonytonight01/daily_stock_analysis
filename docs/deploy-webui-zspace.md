@@ -6,6 +6,14 @@
 
 ## 准备文件与目录
 
+**支持 Compose 的极空间可优先使用无需手工建目录的快速入口**：将 `docker/docker-compose.nas-quick.yml` 内容导入一个新的 Compose 项目，启动后访问 `http://NAS局域网IP:8000`。该文件自动创建三个 Docker 命名卷，并仅在首次启动时生成 DeepSeek 配置；在网页「设置」填写 Key 后重启，配置不会被初始化逻辑覆盖。它不要求上传 `runtime.env` 或填写 NAS 的绝对路径。选择这个入口后，不要同时启动下文的另一套容器。
+
+命名卷由 Docker 管理，不能仅备份 Compose 文本就视为已备份数据；可通过 Docker/NAS 的卷管理导出 data/logs/reports。正常停止或更新容器保留命名卷，**不要选择删除关联卷，也不要执行 `docker compose down -v`**。若更换 Compose 项目名称，会创建另一组卷，原记录不会自动迁移。偏好在 NAS 文件管理器直接管理数据目录时，可使用下文的文件夹映射方案。
+
+快速入口已在当前 Docker 环境实际验证首次生成配置、私有文件权限、管理员登录、首页响应，以及重启后保留原配置与登录开关。模型 Key 留空，未发起新的 DeepSeek 调用；仍需在实际 NAS 上验证访问与分析。
+
+首次页面可能显示镜像拉取/初始化尚未完成，应先确认容器正常运行；NAS 的 8000 端口已占用时，在 Compose 环境设置 `NAS_WEB_PORT` 为另一个空闲端口，或只修改 ports 映射的宿主机端口。外网 IPv4 地址本身不代表该端口已经可达，远程访问方式确认前先完成局域网验证。
+
 在极空间文件管理器中新建专用目录（例如 `docker/daily-stock-analysis`），在其中建立 `data`、`logs`、`reports` 三个子目录。
 
 - 把本仓库 `docs/examples/tdx-webui-cloud.env.example` 的内容保存为 `data/runtime.env`。该文件已设置 DeepSeek Flash，API Key 留空；务必保存成文本文件 `runtime.env`，不能带 `.txt` 后缀。

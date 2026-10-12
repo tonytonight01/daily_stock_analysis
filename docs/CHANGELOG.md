@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [改进] NAS Compose 增加可直接导入的命名卷入口，首次自动生成无密钥的 DeepSeek 配置，重复启动保留既有设置，免手动创建目录和上传运行时文件。
+
 - [改进] 增加极空间 NAS 的预构建 Web 镜像部署配置及图形界面操作说明，保留 DeepSeek 运行时配置、管理员登录和历史数据，明确与通达信 Actions 任务的关系。
 
 - [改进] 增加云服务器 Web 专用 Compose 与启动脚本，保留运行时模型配置和数据库、启用管理员登录与严格健康检查，默认通过 SSH 隧道或 HTTPS 反向代理访问；镜像构建可配置 npm 下载源。
