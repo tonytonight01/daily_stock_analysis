@@ -78,6 +78,39 @@ python main.py --webui-only --host 127.0.0.1 --port 8000
 
 历史列表读取该 Web 服务的数据库。Actions ZIP 里的 `tdx-model-check.json` 是通路验证短报告，不是完整个股分析记录，不会自动出现在历史列表中。首次启动历史列表为空是正常情况；在首页运行个股分析后可查看真实结果。当前通达信公式运行在 Actions 选股脚本中，启用 Web 服务本身不会将这条公式接入网页选股页或自动同步每日名单；正式部署时需要明确数据同步与调度方式，不能把产品预览中的样例数据作为真实报告。
 
+### 云服务器常驻 Web 工作台
+
+本方案在目标 Linux 服务器安装 Docker Engine 与 Compose v2 后，从自己的 Fork 构建前端和后端，保留本 Fork 的改动，不依赖上游预构建镜像。首次构建需要联网安装依赖，建议先确认服务器可以访问 GitHub、Docker Hub、npm、PyPI、DeepSeek 和行情服务。
+
+```bash
+git clone https://github.com/tonytonight01/daily_stock_analysis.git
+cd daily_stock_analysis
+sh scripts/deploy-webui-cloud.sh
+```
+
+独立 Compose 文件为 `docker/docker-compose.cloud.yml`，只启动 Web/server 服务，`restart: unless-stopped` 提供容器重启恢复；服务器自身还需启用 Docker 开机启动。它不会启动 analyzer，也不会把 Actions 的公式调度迁移到服务器。
+
+启动器只在不存在时创建 `data/runtime.env`；在服务器上填写该文件里的 DeepSeek Key，或通过网页「设置」保存。该文件被整个 data 目录挂载，重建时不会覆盖，所以网页保存的模型配置会保留；没有把同名模型/密钥从宿主机 `.env` 再次注入容器覆盖它。数据库、登录状态、日志和报告也保存在挂载目录中，密钥留空时界面仍可配置，但不能运行实际模型分析。
+
+默认开启管理员认证，首次访问创建登录密码。默认宿主机只监听 loopback，先在你的电脑建立 SSH 隧道（将占位符替换为真实 SSH 用户名和服务器地址）：
+
+```bash
+ssh -N -L 8000:127.0.0.1:8000 SSH_USER@SERVER_ADDRESS
+```
+
+保持隧道窗口打开，在电脑浏览器访问 `http://127.0.0.1:8000`；服务实际运行在云服务器。若本机端口已占用，可改隧道左侧端口。需要直接通过公网网址访问时，先配置域名与 HTTPS 反向代理，再将代理上游指向服务器 loopback 端口；参考 [云服务器 Web 界面访问指南](deploy-webui-cloud.md)。Compose 插值变量 `API_PORT` 可修改服务端口，`API_BIND_HOST` 默认 `127.0.0.1`，不要在没有配置访问入口时随意改为公网监听。
+
+构建默认使用官方 npm 源，并替换锁文件中的镜像下载主机；`NPM_REGISTRY` 和 `NPM_REPLACE_REGISTRY_HOST` 可通过 Compose 插值变量调整。查看、重启和停止服务：
+
+```bash
+docker compose -f docker/docker-compose.cloud.yml ps
+docker compose -f docker/docker-compose.cloud.yml logs --tail=100 server
+docker compose -f docker/docker-compose.cloud.yml restart server
+docker compose -f docker/docker-compose.cloud.yml down
+```
+
+停止不会删除宿主机 data/logs/reports；更新前应备份这些目录（包含凭据，备份也需妥善保存）。更新并重建可运行 `git pull --ff-only`，然后再次执行启动器；回滚到此前提交并重建前，也应先备份数据库。
+
 ### 当前阶段：小样本可行性验证，不配置推送
 
 在 Actions → 每日股票分析 → Run workflow 勾选 `verify_only`，样本数 `screening_sample_size` 默认 20（范围 1–100）。`verify_as_of` 留空时须在当天收盘后（北京时间 15:30 后）启动；盘前、周末或休市时可填近期已收盘交易日，例如 `2026-10-09`。历史验证只用目标日及之前的 K 线，当前接口仅提供最近一段历史，过早的目标日可能不足 90 根。股票全集仍来自当前快照，不用于历史全市场回测。

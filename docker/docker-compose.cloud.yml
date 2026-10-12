@@ -1,0 +1,38 @@
+# Persistent Web workspace; use an SSH tunnel or HTTPS reverse proxy to access it.
+name: daily-stock-analysis-cloud
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+        NPM_REPLACE_REGISTRY_HOST: ${NPM_REPLACE_REGISTRY_HOST:-always}
+    restart: unless-stopped
+    command: ["python", "main.py", "--serve-only", "--host", "0.0.0.0", "--port", "${API_PORT:-8000}"]
+    ports:
+      - "${API_BIND_HOST:-127.0.0.1}:${API_PORT:-8000}:${API_PORT:-8000}"
+    environment:
+      TZ: Asia/Shanghai
+      ENV_FILE: /app/data/runtime.env
+      WEBUI_HOST: 0.0.0.0
+      WEBUI_PORT: ${API_PORT:-8000}
+      WEBUI_AUTO_BUILD: "false"
+      ADMIN_AUTH_ENABLED: "true"
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - ../reports:/app/reports
+      - ../strategies:/app/strategies:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://localhost:' + os.environ['WEBUI_PORT'] + '/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

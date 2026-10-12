@@ -10,9 +10,11 @@ FROM node:20-slim AS web-builder
 WORKDIR /app/apps/dsa-web
 ARG DSA_WEB_VERSION=0.0.0
 ARG DSA_WEB_REVISION=unknown
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ARG NPM_REPLACE_REGISTRY_HOST=npmjs
 
 COPY apps/dsa-web/package.json apps/dsa-web/package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --registry="$NPM_REGISTRY" --replace-registry-host="$NPM_REPLACE_REGISTRY_HOST"
 
 COPY apps/dsa-web/ ./
 RUN DSA_WEB_VERSION="${DSA_WEB_VERSION}" DSA_WEB_REVISION="${DSA_WEB_REVISION}" npm run build
