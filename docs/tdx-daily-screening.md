@@ -80,6 +80,8 @@ python main.py --webui-only --host 127.0.0.1 --port 8000
 
 ### 云服务器常驻 Web 工作台
 
+已有极空间 NAS 时可直接使用 [极空间 NAS 部署指南](deploy-webui-zspace.md) 与预构建镜像，不必购买云服务器。
+
 本方案在目标 Linux 服务器安装 Docker Engine 与 Compose v2 后，从自己的 Fork 构建前端和后端，保留本 Fork 的改动，不依赖上游预构建镜像。首次构建需要联网安装依赖，建议先确认服务器可以访问 GitHub、Docker Hub、npm、PyPI、DeepSeek 和行情服务。
 
 ```bash
