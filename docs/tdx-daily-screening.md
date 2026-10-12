@@ -58,6 +58,10 @@ Secrets 配置 `LLM_DEEPSEEK_API_KEY`，值为 DeepSeek 平台创建的 API Key�
 
 项目已包含产品预览中的 Web 前端，无需另写界面。GitHub Actions 负责运行任务，不托管持续运行的 Web 服务；网页需要在本地电脑或云服务器单独启动。
 
+**Windows 本地启动入口**：从本 Fork 下载源码 ZIP 并完整解压，安装 Python 3.11+（安装时勾选 Add Python to PATH）与符合前端要求的 Node.js（当前为 20.19–26.x，建议使用 LTS），双击根目录的 `start-webui-local.cmd`。启动器会创建项目内 `.venv`、安装 Python 依赖、通过现有启动流程构建前端，服务就绪后自动打开浏览器。首次安装需联网且可能耗时数分钟；后续启动按依赖文件变化决定是否重新安装。保留命令窗口，按 Ctrl+C 停止服务。Windows 启动入口尚需在用户机器验证，不依赖远程控制或读取本机通达信数据。
+
+首次启动仅在 `.env` 不存在时复制 `docs/examples/tdx-webui.env.example`，已有配置不会被覆盖。模板已选择 DeepSeek Flash，Key 留空；进入网页「设置」填写 `LLM_DEEPSEEK_API_KEY` 并保存，按页面提示重启。也可直接在本地 `.env` 填写。设置浅色主题后可使用截图中的工作台。在 macOS/Linux 可运行 `python3 scripts/start-webui-local.py`；`--no-browser` 可关闭自动打开浏览器。
+
 在已安装 Python 3.11+、Node.js 20.19+ 和 npm 10+ 的部署机器上，下载本 Fork，安装 `requirements.txt` 中的依赖，然后构建前端：
 
 ```bash

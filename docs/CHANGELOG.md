@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [改进] 增加本地 Web 工作台启动器与 Windows 双击入口，自动准备项目虚拟环境、复用前端构建流程并在服务就绪后打开浏览器；初始 DeepSeek 配置不含密钥且保留既有 .env。
+
 - [文档] 补充通达信部署方案的原生 Web 工作台构建与启动步骤，明确独立 DeepSeek 配置、访问地址以及 Actions 验证产物与网页历史数据库的区别。
 
 - [文档] 通达信选股部署说明改用 DeepSeek Flash，明确渠道与模型 Variables、独立 API Key 以及从 OpenAI 切换的步骤；验证阶段无需推送配置。
